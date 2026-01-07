@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sopro"
+version = "1.0.0"
+description = "A lightweight text-to-speech model with zero-shot voice cloning."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache 2.0" }
+authors = [{ name = "Samuel Vitorino", email = "samvitorino@gmail.com" }]
+dependencies = [
+  "numpy>=1.23",
+  "torch>=2.1",
+  "transformers>=4.46.0",
+  "huggingface_hub>=0.23",
+  "safetensors>=0.4.3",
+  "sentencepiece>=0.1.99",
+  "soundfile>=0.12.1",
+  "torchaudio>=2.1",
+  "tqdm>=4.66",
+]
+
+[project.scripts]
+soprotts = "sopro.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

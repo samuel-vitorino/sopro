@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SoproTTS</title>
+  <style>
+    :root{
+      --bg:#141618;
+      --panel:#191c1f;
+      --panel2:#171a1d;
+      --border:#2a2f35;
+      --text:#eef1f4;
+      --muted:#aab3bd;
+      --muted2:#7d8793;
+      --shadow: 0 12px 34px rgba(0,0,0,.35);
+      --r:16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      background: var(--bg);
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      overflow-x: hidden; /* kills tiny horizontal scroll */
+    }
+
+    header{
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 22px 18px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      width: 100%;
+    }
+    h1{
+      margin:0;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: .2px;
+    }
+    .pill{
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space:nowrap;
+    }
+
+    main{
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 12px 18px 26px;
+      display:grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 14px;
+      width: 100%;
+    }
+    @media (max-width: 920px){
+      main{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      background: linear-gradient(180deg, var(--panel), var(--panel2));
+      border:1px solid var(--border);
+      border-radius: var(--r);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      min-width: 0;
+    }
+    .hd{
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      min-width: 0;
+    }
+    .h{
+      font-size: 13px;
+      font-weight: 650;
+      color: var(--text);
+      letter-spacing: .2px;
+    }
+    .bd{ padding: 14px 16px 16px; }
+
+    textarea{
+      width:100%;
+      min-height: 150px;
+      resize: vertical;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      outline: none;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    textarea:focus { border-color: rgba(255,255,255,.20); }
+
+    label{
+      display:block;
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--muted);
+      margin-bottom: 6px;
+      letter-spacing: .2px;
+    }
+    input[type="number"], input[type="text"]{
+      width:100%;
+      padding: 9px 10px;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      outline: none;
+      font-size: 13px;
+    }
+    input[type="file"]{
+      width:100%;
+      padding: 10px;
+      border-radius: 12px;
+      border:1px dashed rgba(255,255,255,.16);
+      background: rgba(0,0,0,.20);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .grid3{
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .grid2{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    @media (max-width: 600px){
+      .grid3, .grid2 { grid-template-columns: 1fr; }
+    }
+
+    .row{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      flex-wrap:wrap;
+      min-width: 0;
+    }
+
+    /* Toggle switch */
+    .switch{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      user-select:none;
+    }
+    .switch input{
+      appearance: none;
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.18);
+      position: relative;
+      outline:none;
+      cursor:pointer;
+      transition: background .12s ease;
+    }
+    .switch input::after{
+      content:"";
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      position:absolute;
+      top: 2px;
+      left: 2px;
+      background: rgba(255,255,255,.85);
+      transition: transform .12s ease;
+    }
+    .switch input:checked{
+      background: rgba(255,255,255,.30);
+    }
+    .switch input:checked::after{
+      transform: translateX(18px);
+    }
+
+    .btn{
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      font-weight: 650;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform .06s ease, background .12s ease;
+      white-space: nowrap;
+    }
+    .btn:hover{ background: rgba(255,255,255,.12); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      background: rgba(255,255,255,.92);
+      color: rgba(0,0,0,.92);
+      border-color: rgba(255,255,255,.25);
+    }
+    .btn.primary:hover{ background: rgba(255,255,255,.98); }
+    .btn.danger{
+      background: rgba(255,80,120,.18);
+      border-color: rgba(255,80,120,.35);
+    }
+
+    .btn:disabled{
+      opacity: .45;
+      cursor: not-allowed;
+    }
+    .btn:disabled:hover{ background: rgba(255,255,255,.08); }
+    .btn:disabled:active{ transform: none; }
+
+    .btn .ico{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width: 16px;
+      height: 16px;
+    }
+    .btn .ico svg{
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    #download_btn, #restart_btn, #play_btn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      line-height: 1;
+    }
+
+    #play_btn .ico-play{ display:none; }
+    #play_btn .ico-pause{ display:block; }
+    #play_btn[data-state="paused"] .ico-play{ display:block; }
+    #play_btn[data-state="paused"] .ico-pause{ display:none; }
+
+    #play_btn .ico-play{
+        fill: currentColor;
+        stroke: none;
+    }
+
+    .refbox{
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      padding: 12px;
+      background: rgba(0,0,0,.18);
+    }
+    .refmeta{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      color: var(--muted2);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .mini-audio{
+      width:100%;
+      margin-top: 10px;
+      opacity: .92;
+    }
+    .hint{
+      color: var(--muted2);
+      font-size: 12px;
+      line-height: 1.35;
+      margin-top: 10px;
+    }
+
+    details{
+      margin-top: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      background: rgba(0,0,0,.14);
+      padding: 10px 12px;
+    }
+    summary{
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      list-style: none;
+      outline: none;
+    }
+    summary::-webkit-details-marker{ display:none; }
+    summary::after{
+      content: "▾";
+      float:right;
+      color: var(--muted2);
+    }
+    details[open] summary::after{ content: "▴"; }
+
+    canvas{
+      width:100%;
+      height: 260px;
+      display:block;
+      border-top: 1px solid rgba(255,255,255,.06);
+      background: rgba(0,0,0,.28);
+    }
+
+    .status{
+      padding: 12px 14px 14px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      line-height: 1.35;
+    }
+
+    .bottom-actions{
+      display:flex;
+      justify-content:flex-end;
+      align-items:center;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .footer{
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 10px 18px 22px;
+      width: 100%;
+      color: var(--muted2);
+      font-size: 12px;
+    }
+
+    .footer-inner{
+      border-top: 1px solid rgba(255,255,255,.06);
+      padding-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .footer-left{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .footer-name{
+      color: var(--muted);
+      font-weight: 650;
+      letter-spacing: .2px;
+    }
+
+    .footer-dot{
+      opacity: .6;
+    }
+
+    .footer-link{
+      color: var(--text);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,.18);
+      padding-bottom: 1px;
+    }
+
+    .footer-link:hover{
+      border-bottom-color: rgba(255,255,255,.45);
+    }
+
+    .footer-link{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,.18);
+      padding-bottom: 1px;
+    }
+
+    .footer-ico{
+      display: inline-flex;
+      width: 16px;
+      height: 16px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .footer-ico svg{
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    @media (min-width: 921px){
+      body{
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      header, main, .footer{
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SoproTTS</h1>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="bd">
+        <label for="text">Text</label>
+        <textarea id="text">This is a demo to test Sopro TTS in both streaming and non-streaming modes. Simply upload a reference audio file or record one using your microphone, then click Generate.</textarea>
+
+        <div style="margin-top:12px;">
+          <label>Reference</label>
+          <div class="refbox">
+            <div class="row" style="justify-content: space-between;">
+              <div style="flex: 1; min-width: 220px;">
+                <input id="ref_file" type="file" accept="audio/*" />
+              </div>
+              <button id="mic_btn" class="btn" type="button">Record mic</button>
+            </div>
+
+            <div class="refmeta">
+              <div id="ref_label">No reference selected yet.</div>
+              <div id="rec_timer"></div>
+            </div>
+
+            <audio id="ref_preview" class="mini-audio" controls style="display:none;"></audio>
+          </div>
+        </div>
+
+        <details>
+          <summary>Advanced options</summary>
+
+          <div class="grid3">
+            <div>
+              <label>top_p</label>
+              <input id="top_p" type="number" step="0.01" min="0.01" max="1" value="0.9" />
+            </div>
+            <div>
+              <label>temperature</label>
+              <input id="temperature" type="number" step="0.01" min="0.05" max="3" value="1.05" />
+            </div>
+            <div>
+              <label>max_frames</label>
+              <input id="max_frames" type="number" step="1" min="1" max="2000" value="400" />
+            </div>
+          </div>
+
+          <div class="grid2">
+            <div>
+              <label>style_strength</label>
+              <input id="style_strength" type="number" step="0.05" min="0" max="3" value="1.0" />
+            </div>
+            <div>
+              <label>ref_seconds (optional)</label>
+              <input id="ref_seconds" type="number" step="0.1" min="0" max="30" placeholder="(blank = default)" />
+            </div>
+            <div>
+              <label>prefix_sec (optional)</label>
+              <input id="prefix_sec" type="number" step="0.1" min="0" max="10" placeholder="(blank = auto)" />
+            </div>
+            <div class="row" style="align-items:flex-end;">
+              <label style="margin:0; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; font-weight:650;">
+                <input id="anti_loop" type="checkbox" checked />
+                anti_loop
+              </label>
+              <label style="margin:0; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; font-weight:650;">
+                <input id="use_prefix" type="checkbox" checked />
+                use_prefix
+              </label>
+            </div>
+          </div>
+
+          <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.06);">
+            <div class="row" style="justify-content:space-between;">
+              <label style="margin:0; display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; font-weight:650;">
+                <input id="use_stop_head" type="checkbox" checked />
+                use_stop_head
+              </label>
+              <div class="pill" style="padding:6px 10px;">early stop</div>
+            </div>
+
+            <div class="grid2" style="margin-top:10px;">
+              <div>
+                <label>stop_threshold</label>
+                <input id="stop_threshold" type="number" step="0.01" min="0" max="1" value="0.75" />
+              </div>
+              <div>
+                <label>stop_patience</label>
+                <input id="stop_patience" type="number" step="1" min="1" max="50" value="3" />
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <div class="bottom-actions">
+          <label class="switch" title="Stream audio as it is generated" style="margin:0;">
+            Stream
+            <input id="stream" type="checkbox" checked />
+          </label>
+          <button id="gen_btn" class="btn primary" type="button">Generate</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="hd">
+        <div class="h">Output</div>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="download_btn" class="btn" type="button" title="Download last output" disabled>
+            <span class="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M12 3v10"></path>
+                <path d="M8 11l4 4 4-4"></path>
+                <path d="M4 21h16"></path>
+              </svg>
+            </span>
+            <span class="txt">Download</span>
+          </button>
+
+          <button id="restart_btn" class="btn" type="button" title="Play from the start" disabled>
+            <span class="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+                <path d="M3 4v6h6"></path>
+              </svg>
+            </span>
+            <span class="txt">Restart</span>
+          </button>
+
+          <button id="play_btn" class="btn" type="button" disabled data-state="playing">
+            <span class="ico" aria-hidden="true">
+              <svg class="ico-play" viewBox="0 0 24 24">
+                <path d="M8 5v14l12-7z"></path>
+              </svg>
+              <svg class="ico-pause" viewBox="0 0 24 24">
+                <path d="M7 5h4v14H7z"></path>
+                <path d="M13 5h4v14h-4z"></path>
+              </svg>
+            </span>
+            <span class="txt">Pause</span>
+          </button>
+        </div>
+      </div>
+
+      <canvas id="scope"></canvas>
+
+      <div id="status" class="status">Idle.</div>
+    </section>
+  </main>
+
+  <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-left">
+          <span class="footer-name">Made by Samuel Vitorino</span>
+          <span class="footer-dot">•</span>
+          <a
+              class="footer-link"
+              href="https://www.buymeacoffee.com/samuelvitorino"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="footer-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M3 8h13v6a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5V8z"></path>
+                  <path d="M16 10h2a3 3 0 0 1 0 6h-2"></path>
+                  <path d="M7 3v2"></path>
+                  <path d="M11 3v2"></path>
+                  <path d="M15 3v2"></path>
+                </svg>
+              </span>
+              <span>Buy me a coffee</span>
+            </a>
+        </div>
+      </div>
+    </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
