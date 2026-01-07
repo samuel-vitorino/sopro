@@ -30,7 +30,7 @@ conda activate soprotts
 ### From PyPI
 
 ```bash
-pip install sopro-tts
+pip install sopro
 ```
 
 ### From the repo
