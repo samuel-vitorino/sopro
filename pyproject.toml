@@ -22,6 +22,11 @@ dependencies = [
   "tqdm>=4.66",
 ]
 
+[project.urls]
+Homepage = "https://github.com/samuel-vitorino/sopro"
+Repository = "https://github.com/samuel-vitorino/sopro"
+Issues = "https://github.com/samuel-vitorino/sopro/issues"
+
 [project.scripts]
 soprotts = "sopro.cli:main"
 
