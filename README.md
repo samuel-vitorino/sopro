@@ -69,12 +69,11 @@ from sopro import SoproTTS
 tts = SoproTTS.from_pretrained("samuel-vitorino/sopro", device="cpu")
 
 wav = tts.synthesize(
-    "Hello! This is a non-streaming synthesis example.",
+    "Hello! This is a non-streaming Sopro TTS example.",
     ref_audio_path="ref.wav",
 )
 
 tts.save_wav("out.wav", wav)
-print("Wrote out.wav")
 ```
 
 #### Streaming
@@ -87,22 +86,20 @@ tts = SoproTTS.from_pretrained("samuel-vitorino/sopro", device="cpu")
 
 chunks = []
 for chunk in tts.stream(
-    "Hello! This is a streaming example.",
-    ref_audio_path="ref.wav",
-    chunk_frames=6,
+    "Hello! This is a streaming Sopro TTS example.",
+    ref_audio_path="ref.mp3",
 ):
-    if chunk.ndim == 1:
-        chunk = chunk.unsqueeze(0)
     chunks.append(chunk.cpu())
 
-wav = torch.cat(chunks, dim=-1) if chunks else torch.zeros(1, 0)
+wav = torch.cat(chunks, dim=-1)
 tts.save_wav("out_stream.wav", wav)
-print("Wrote out_stream.wav")
 ```
 
 ---
 
 ## Interactive streaming demo
+
+![Screenshot](https://github.com/user-attachments/assets/a1902bb9-734c-4da8-ad0d-f842fb7da370)
 
 After you install the `sopro` package:
 
