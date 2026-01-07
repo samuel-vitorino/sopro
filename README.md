@@ -105,9 +105,17 @@ After you install the `sopro` package:
 
 ```bash
 pip install -r demo/requirements.txt
+uvicorn demo.server:app --host 0.0.0.0 --port 8000
+```
+
+Or with docker:
+
+```bash
 docker build -t sopro-demo .
 docker run --rm -p 8000:8000 sopro-demo
 ```
+
+Navigate to http://localhost:8000 on your browser.
 
 ---
 
