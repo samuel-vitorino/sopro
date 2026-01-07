@@ -4,14 +4,15 @@ https://github.com/user-attachments/assets/40254391-248f-45ff-b9a4-107d64fbb95f
 
 [![Alt Text](https://img.shields.io/badge/HuggingFace-Model-orange?logo=huggingface)](https://huggingface.co/samuel-vitorino/sopro)
 
-Sopro (from the Portuguese word for “breath/blow”) is a lightweight text-to-speech model I trained as a side project. Sopro is composed of dilated convs (à la WaveNet) and lightweight cross-attention layers, instead of the common Transformer architecture. Even though Sopro is not SOTA across most voices and situations, I still think it’s a cool project made with a very low budget (trained on a single L40S GPU), and it can be improved with better data.
+Sopro (from the Portuguese word for “breath/blow”) is a lightweight English text-to-speech model I trained as a side project. Sopro is composed of dilated convs (à la WaveNet) and lightweight cross-attention layers, instead of the common Transformer architecture. Even though Sopro is not SOTA across most voices and situations, I still think it’s a cool project made with a very low budget (trained on a single L40S GPU), and it can be improved with better data.
 
 Some of the main features are:
 
 - **169M parameters**
 - **Streaming**
 - **Zero-shot voice cloning**
-- **0.25 RTF on CPU** (measured on an M3 base model), meaning it generates 30 seconds of audio in 7.5 seconds.
+- **0.25 RTF on CPU** (measured on an M3 base model), meaning it generates 30 seconds of audio in 7.5 seconds
+- **3-12 seconds of reference audio** for voice cloning
 
 ---
 

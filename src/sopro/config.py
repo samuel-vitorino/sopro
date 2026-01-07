@@ -9,7 +9,7 @@ class SoproTTSConfig:
     num_codebooks: int = 32
     codebook_size: int = 2048
     mimi_fps: float = 12.5
-    max_frames: int = 375
+    max_frames: int = 400
     audio_sr: int = TARGET_SR
 
     d_model: int = 384
