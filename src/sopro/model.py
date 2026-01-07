@@ -793,7 +793,7 @@ class SoproTTS:
         )
         return ref
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def synthesize(
         self,
         text: str,

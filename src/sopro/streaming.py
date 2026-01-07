@@ -145,7 +145,7 @@ class SoproTTSStreamer:
             if wav is not None:
                 yield wav
 
-
+@torch.inference_mode()
 def stream(
     tts: SoproTTS,
     text: str,
