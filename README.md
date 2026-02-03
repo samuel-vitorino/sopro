@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/40254391-248f-45ff-b9a4-107d64fbb95f
 
 ### 📰 News
 
-**2026.02.04 – SoproTTS v1.5 is out: more stable, faster, and smaller. Trained for just $100, it reaches 250 ms TTFA streaming and 0.05 RTF (~20× realtime) on CPU.**
+**2026.02.04 - SoproTTS v1.5 is out: more stable, faster, and smaller. Trained for just $100, it reaches 250 ms TTFA streaming and 0.05 RTF (~20× realtime) on CPU.**
 
 Sopro (from the Portuguese word for “breath/blow”) is a lightweight English text-to-speech model I trained as a side project. Sopro is composed of dilated convs (à la WaveNet) and lightweight cross-attention layers, instead of the common Transformer architecture. Even though Sopro is not SOTA across most voices and situations, I still think it’s a cool project made with a very low budget (trained on a single L40S GPU), and it can be improved with better data.
 
@@ -152,10 +152,6 @@ Navigate to http://localhost:8000 on your browser.
 - If you use torchaudio to read or write audio, ffmpeg may be required. I recommend just using soundfile.
 - I will publish the training code once I have time to organize it.
 
-Due to budget constraints, the dataset used for training was pre-tokenized and the raw audio was discarded (it took up a lot of space). Later in training, I could have used the raw audio to improve the speaker embedding / voice similarity, because some nuances of voice are lost when you compress it with a neural codec into a discrete space.
-
-I didn't lose much time trying to optimize further, but there is still some room for improvement. For example, caching conv states.
-
 Currently, generation is limited to **~32 seconds (400 frames)**. You can increase it, but the model generally hallucinates beyond that.
 
 AI was used mainly for creating the web demo, organizing my messy code into this repo, ablations and brainstorming.
@@ -180,3 +176,4 @@ I would love to support more languages and continue improving the model. If you 
 - [Attentive Stats Pooling](https://arxiv.org/abs/1803.10963)
 - [AudioLM](https://arxiv.org/pdf/2209.03143)
 - [CSM](https://github.com/SesameAILabs/csm)
+- [Llama 3.2 (Tokenizer)](https://huggingface.co/meta-llama/Llama-3.2-1B)
