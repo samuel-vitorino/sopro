@@ -147,7 +147,7 @@ Navigate to http://localhost:8000 on your browser.
 
 - Sopro can be inconsistent, so mess around with the parameters until you get a decent sample.
 - Voice cloning is **highly dependent** on mic quality, ambient noise, etc. On more OOD voices it might fail to match the voice well.
-- Prefer phonemes instead of abbreviations and symbols. For example, `“1 + 2”` → `“1 plus 2”`. That said, Sopro can generally read abbreviations like “CPU”, “TTS”, etc.
+- Prefer words instead of abbreviations and symbols. For example, `“1 + 2”` → `“1 plus 2”`. That said, Sopro can generally read abbreviations like “CPU”, “TTS”, etc.
 - The streaming version is not bit-exact compared to the non-streaming version. For best quality, prioritize the non-streaming version.
 - If you use torchaudio to read or write audio, ffmpeg may be required. I recommend just using soundfile.
 - I will publish the training code once I have time to organize it.
