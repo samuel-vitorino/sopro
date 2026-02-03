@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+@dataclass
+class DepthwiseConv1dState:
+    buf: torch.Tensor
 
 
 class GLU(nn.Module):
@@ -39,6 +47,19 @@ class DepthwiseConv1d(nn.Module):
         self.kernel_size = kernel_size
         self.dw = nn.Conv1d(d, d, kernel_size, groups=d, padding=0, dilation=dilation)
 
+    def _ctx_len(self) -> int:
+        return (self.kernel_size - 1) * self.dilation + 1
+
+    def init_state(
+        self, batch_size: int, device: torch.device, dtype: torch.dtype
+    ) -> DepthwiseConv1dState:
+        if not self.causal:
+            raise ValueError("init_state is only valid for causal convs")
+        L = self._ctx_len()
+        D = int(self.dw.in_channels)
+        buf = torch.zeros((batch_size, L, D), device=device, dtype=dtype)
+        return DepthwiseConv1dState(buf=buf)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         xt = x.transpose(1, 2)
         if self.causal:
@@ -51,6 +72,42 @@ class DepthwiseConv1d(nn.Module):
             xt = F.pad(xt, (left, right))
         y = self.dw(xt)
         return y.transpose(1, 2)
+
+    def forward_step(
+        self, x_bt_d: torch.Tensor, state: Optional[DepthwiseConv1dState]
+    ) -> Tuple[torch.Tensor, DepthwiseConv1dState]:
+        if not self.causal:
+            raise ValueError("forward_step is only valid for causal convs")
+
+        if x_bt_d.dim() == 2:
+            x_bt_d = x_bt_d.unsqueeze(1)
+
+        B, T, D = x_bt_d.shape
+        if T != 1:
+            raise ValueError("forward_step expects a single timestep [B,1,D]")
+
+        if state is None:
+            state = self.init_state(B, x_bt_d.device, x_bt_d.dtype)
+
+        buf = state.buf
+        if buf.size(1) > 1:
+            buf = torch.cat([buf[:, 1:, :], x_bt_d], dim=1)
+        else:
+            buf = x_bt_d
+
+        k = int(self.kernel_size)
+        d = int(self.dilation)
+        idx = torch.arange(0, k * d, d, device=x_bt_d.device)
+        x_bkd = buf.index_select(1, idx)  # [B,k,D]
+
+        w_dk = self.dw.weight.squeeze(1).to(dtype=x_bt_d.dtype)
+        y_bd = (x_bkd.transpose(1, 2) * w_dk.unsqueeze(0)).sum(dim=-1)
+        if self.dw.bias is not None:
+            y_bd = y_bd + self.dw.bias.to(dtype=y_bd.dtype).unsqueeze(0)
+
+        y_bt_d = y_bd.unsqueeze(1)
+        state.buf = buf
+        return y_bt_d, state
 
 
 class SSMLiteBlock(nn.Module):
@@ -76,12 +133,33 @@ class SSMLiteBlock(nn.Module):
         )
         self.drop = nn.Dropout(dropout)
 
+    def init_state(
+        self, batch_size: int, device: torch.device, dtype: torch.dtype
+    ) -> dict:
+        if not self.dw.causal:
+            raise ValueError("SSMLiteBlock.init_state only valid for causal blocks")
+        return {"dw": self.dw.init_state(batch_size, device, dtype)}
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.glu(self.norm(x))
         h = self.dw(h)
         x = x + self.drop(h)
         x = x + self.drop(self.ff(x))
         return x
+
+    def forward_step(
+        self, x_bt_d: torch.Tensor, state: dict
+    ) -> Tuple[torch.Tensor, dict]:
+        if not self.dw.causal:
+            raise ValueError("forward_step only valid for causal blocks")
+
+        h = self.glu(self.norm(x_bt_d))
+        y, dw_state = self.dw.forward_step(h, state.get("dw", None))
+        state["dw"] = dw_state
+
+        x = x_bt_d + self.drop(y)
+        x = x + self.drop(self.ff(x))
+        return x, state
 
 
 class AttentiveStatsPool(nn.Module):

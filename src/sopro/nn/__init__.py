@@ -1,7 +1,9 @@
 from .blocks import GLU, AttentiveStatsPool, DepthwiseConv1d, RMSNorm, SSMLiteBlock
 from .embeddings import CodebookEmbedding, SinusoidalPositionalEmbedding, TextEmbedding
+from .generator import ARRVQ1Generator
+from .ref import RefXAttnBlock, RefXAttnStack
 from .speaker import SpeakerFiLM, Token2SV
-from .xattn import RefXAttn, RefXAttnBlock, TextXAttnBlock
+from .text import TextEncoder, TextXAttnBlock
 
 __all__ = [
     "GLU",
@@ -14,7 +16,9 @@ __all__ = [
     "CodebookEmbedding",
     "Token2SV",
     "SpeakerFiLM",
-    "RefXAttn",
-    "RefXAttnBlock",
+    "TextEncoder",
     "TextXAttnBlock",
+    "RefXAttnBlock",
+    "RefXAttnStack",
+    "ARRVQ1Generator",
 ]

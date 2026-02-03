@@ -32,8 +32,6 @@ def main() -> None:
     ap.add_argument("--temperature", type=float, default=1.05)
     ap.add_argument("--no_anti_loop", action="store_true")
 
-    ap.add_argument("--no_prefix", action="store_true")
-    ap.add_argument("--prefix_sec", type=float, default=None)
     ap.add_argument("--style_strength", type=float, default=None)
     ap.add_argument("--ref_seconds", type=float, default=None)
 
@@ -77,6 +75,7 @@ def main() -> None:
             torch.cuda.manual_seed_all(args.seed)
 
     t0 = time.perf_counter()
+
     tts = SoproTTS.from_pretrained(
         args.repo_id,
         revision=args.revision,
@@ -84,6 +83,7 @@ def main() -> None:
         token=args.hf_token,
         device=device,
     )
+
     t1 = time.perf_counter()
     if not args.quiet:
         print(f"[Load] {t1 - t0:.2f}s")
@@ -99,7 +99,7 @@ def main() -> None:
 
     with torch.inference_mode():
         text_ids = tts.encode_text(args.text)
-        ref = tts.encode_reference(
+        ref = tts.prepare_reference(
             ref_audio_path=args.ref_audio,
             ref_tokens_tq=ref_tokens_tq,
             ref_seconds=args.ref_seconds,
@@ -119,58 +119,42 @@ def main() -> None:
 
         t_start = time.perf_counter()
 
-        hist_A: list[int] = []
-        pbar = tqdm(
-            total=args.max_frames,
-            desc="AR sampling",
-            unit="frame",
-            disable=args.quiet,
-        )
+    hist_A: list[int] = []
+    pbar = tqdm(
+        total=args.max_frames + 1, desc="AR sampling", unit="step", disable=args.quiet
+    )
 
-        for _t, rvq1, p_stop in tts.model.ar_stream(
-            prep,
-            max_frames=args.max_frames,
-            top_p=args.top_p,
-            temperature=args.temperature,
-            anti_loop=(not args.no_anti_loop),
-            use_prefix=(not args.no_prefix),
-            prefix_sec_fixed=args.prefix_sec,
-            use_stop_head=(False if args.no_stop_head else None),
-            stop_patience=args.stop_patience,
-            stop_threshold=args.stop_threshold,
-        ):
-            hist_A.append(int(rvq1))
+    for _t, tok, is_eos in tts.model.ar_stream(
+        prep,
+        max_frames=args.max_frames,
+        top_p=args.top_p,
+        temperature=args.temperature,
+        anti_loop=(not args.no_anti_loop),
+    ):
+        if is_eos:
+            pbar.set_postfix(eos="yes")
             pbar.update(1)
-            if p_stop is None:
-                pbar.set_postfix(p_stop="off")
-            else:
-                pbar.set_postfix(p_stop=f"{float(p_stop):.2f}")
+            break
+        hist_A.append(int(tok))
+        pbar.update(1)
 
-        pbar.n = len(hist_A)
-        pbar.close()
+    t_after_sampling = time.perf_counter()
 
-        t_after_sampling = time.perf_counter()
+    pbar.n = len(hist_A)
+    pbar.close()
 
-        T = len(hist_A)
-        if T == 0:
-            save_audio(args.out, torch.zeros(1, 0), sr=TARGET_SR)
-            t_end = time.perf_counter()
-            if not args.quiet:
-                print(
-                    f"[Timing] sampling={t_after_sampling - t_start:.2f}s, "
-                    f"postproc+decode+save={t_end - t_after_sampling:.2f}s, "
-                    f"total={t_end - t_start:.2f}s"
-                )
-                print(f"[Done] Wrote {args.out}")
-            return
+    T = len(hist_A)
+    if T == 0:
+        save_audio(args.out, torch.zeros(1, 0), sr=TARGET_SR)
+        return
 
-        tokens_A = torch.tensor(hist_A, device=tts.device, dtype=torch.long).unsqueeze(0)
-        cond_seq = prep["cond_all"][:, :T, :]
-        tokens_1xTQ = tts.model.nar_refine(cond_seq, tokens_A)
-        tokens_tq = tokens_1xTQ.squeeze(0)
+    tokens_A = torch.tensor(hist_A, device=tts.device, dtype=torch.long).unsqueeze(0)
+    cond_seq = prep["cond_ar"][:, :T, :]
+    tokens_1xTQ = tts.model.nar_refine(cond_seq, tokens_A)
+    tokens_tq = tokens_1xTQ.squeeze(0)
 
-        wav = tts.codec.decode_full(tokens_tq)
-        save_audio(args.out, wav, sr=TARGET_SR)
+    wav = tts.codec.decode_full(tokens_tq)
+    save_audio(args.out, wav, sr=TARGET_SR)
 
     t_end = time.perf_counter()
     if not args.quiet:

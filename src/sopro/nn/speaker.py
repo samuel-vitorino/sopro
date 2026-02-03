@@ -11,7 +11,7 @@ from .blocks import AttentiveStatsPool, DepthwiseConv1d
 
 class Token2SV(nn.Module):
     def __init__(
-        self, Q: int, V: int, d: int = 192, out_dim: int = 256, dropout: float = 0.05
+        self, Q: int, V: int, d: int = 192, out_dim: int = 192, dropout: float = 0.05
     ):
         super().__init__()
         self.Q, self.V = int(Q), int(V)
@@ -27,7 +27,6 @@ class Token2SV(nn.Module):
             DepthwiseConv1d(d, 7, causal=False),
             nn.GELU(),
         )
-
         self.pool = AttentiveStatsPool(d)
         self.proj = nn.Linear(2 * d, out_dim)
 
@@ -39,26 +38,24 @@ class Token2SV(nn.Module):
         self, tokens_btq: torch.Tensor, lengths: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         B, T, Q = tokens_btq.shape
-        q_idx = torch.arange(Q, device=tokens_btq.device, dtype=torch.long).view(
-            1, 1, Q
-        )
+        device = tokens_btq.device
+
+        if lengths is not None:
+            valid = torch.arange(T, device=device)[None, :] < lengths[:, None]
+        else:
+            valid = torch.ones(B, T, device=device, dtype=torch.bool)
+
+        q_idx = torch.arange(Q, device=device, dtype=torch.long).view(1, 1, Q)
         idx = q_idx * self.V + tokens_btq.long()
         raw_emb = self.emb(idx)
-
-        if self.training:
-            keep_prob = 0.95
-            mask = torch.rand(B, T, device=tokens_btq.device) < keep_prob
-            bad = mask.sum(dim=1) == 0
-            if bad.any():
-                bad_idx = bad.nonzero(as_tuple=False).squeeze(1)
-                rand_pos = torch.randint(
-                    0, T, (bad_idx.numel(),), device=tokens_btq.device
-                )
-                mask[bad_idx, rand_pos] = True
-            raw_emb = raw_emb * mask.float().unsqueeze(-1).unsqueeze(-1)
+        raw_emb = raw_emb * valid[:, :, None, None].to(raw_emb.dtype)
 
         x = self._get_mixed_embedding(raw_emb)
+        x = x * valid[:, :, None].to(x.dtype)
+
         h = self.enc(x)
+        h = h * valid[:, :, None].to(h.dtype)
+
         pooled = self.pool(h, lengths=lengths)
         e = self.proj(pooled)
         return F.normalize(e, dim=-1, eps=1e-6)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import struct
 from typing import Any, Dict, Optional
 
@@ -44,9 +45,7 @@ def load_cfg_from_safetensors(path: str) -> SoproTTSConfig:
     for k in SoproTTSConfig.__annotations__.keys():
         if k in cfg_dict:
             init[k] = cfg_dict[k]
-
-    cfg = SoproTTSConfig(**init)
-    return cfg
+    return SoproTTSConfig(**init)
 
 
 def load_state_dict_from_safetensors(path: str) -> Dict[str, torch.Tensor]:

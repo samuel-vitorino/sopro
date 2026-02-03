@@ -79,6 +79,7 @@ class CodebookEmbedding(nn.Module):
         tokens_subset: Optional[torch.Tensor],
         cb_indices: Optional[List[int]],
         keep_mask: Optional[torch.Tensor] = None,
+        cb_weights: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if tokens_subset is None or cb_indices is None or len(cb_indices) == 0:
             return 0.0
@@ -89,6 +90,21 @@ class CodebookEmbedding(nn.Module):
             idx_list.append(self._indices_for(tokens_subset[..., k], cb).unsqueeze(2))
         idx = torch.cat(idx_list, dim=2)
         emb = self.emb(idx)
+
+        if cb_weights is not None:
+            w = cb_weights
+            if w.dim() != 1:
+                raise ValueError("cb_weights must be 1D")
+            if w.numel() == self.Q:
+                cb_t = torch.tensor(cb_indices, device=emb.device, dtype=torch.long)
+                w = w.to(emb.device).index_select(0, cb_t)
+            elif w.numel() != K:
+                raise ValueError(
+                    f"cb_weights must have len Q={self.Q} or K={K}, got {w.numel()}"
+                )
+
+            w = F.softmax(w.float(), dim=0).to(dtype=emb.dtype)
+            emb = emb * w.view(1, 1, K, 1)
 
         if keep_mask is not None:
             emb = emb * keep_mask.unsqueeze(-1).to(emb.dtype)

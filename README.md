@@ -4,14 +4,18 @@ https://github.com/user-attachments/assets/40254391-248f-45ff-b9a4-107d64fbb95f
 
 [![Alt Text](https://img.shields.io/badge/HuggingFace-Model-orange?logo=huggingface)](https://huggingface.co/samuel-vitorino/sopro)
 
+### 📰 News
+
+**2026.02.04 – SoproTTS v1.5 is out: more stable, faster, and smaller. Trained for just $100, it reaches 250 ms TTFA streaming and 0.05 RTF (~20× realtime) on CPU.**
+
 Sopro (from the Portuguese word for “breath/blow”) is a lightweight English text-to-speech model I trained as a side project. Sopro is composed of dilated convs (à la WaveNet) and lightweight cross-attention layers, instead of the common Transformer architecture. Even though Sopro is not SOTA across most voices and situations, I still think it’s a cool project made with a very low budget (trained on a single L40S GPU), and it can be improved with better data.
 
 Some of the main features are:
 
-- **169M parameters**
+- **147M parameters**
 - **Streaming**
 - **Zero-shot voice cloning**
-- **0.25 RTF on CPU** (measured on an M3 base model), meaning it generates 30 seconds of audio in 7.5 seconds
+- **0.05 RTF on CPU** (measured on an M3 base model), meaning it generates 32 seconds of audio in 1.77 seconds
 - **3-12 seconds of reference audio** for voice cloning
 
 ---
@@ -30,7 +34,7 @@ conda activate soprotts
 ### From PyPI
 
 ```bash
-pip install sopro
+pip install -U sopro
 ```
 
 ### From the repo
@@ -56,9 +60,7 @@ soprotts \
 
 You have the expected `temperature` and `top_p` parameters, alongside:
 
-- `--style_strength` (controls the FiLM strength; increasing it can improve or reduce voice similarity; default `1.0`)
-- `--no_stop_head` to disable early stopping
-- `--stop_threshold` and `--stop_patience` (number of consecutive frames that must be classified as final before **stopping**). For short sentences, the stop head may fail to trigger, in which case you can lower these values. Likewise, if the model stops before producing the full text, adjusting these parameters up can help.
+- `--style_strength` (controls the FiLM strength; increasing it can improve or reduce voice similarity; default `1.2`)
 
 ### Python
 
@@ -89,6 +91,27 @@ chunks = []
 for chunk in tts.stream(
     "Hello! This is a streaming Sopro TTS example.",
     ref_audio_path="ref.mp3",
+):
+    chunks.append(chunk.cpu())
+
+wav = torch.cat(chunks, dim=-1)
+tts.save_wav("out_stream.wav", wav)
+```
+
+You can also precalculate the reference to reduce TTFA:
+
+```python
+import torch
+from sopro import SoproTTS
+
+tts = SoproTTS.from_pretrained("samuel-vitorino/sopro", device="cpu")
+
+ref = tts.prepare_reference(ref_audio_path="ref.mp3")
+
+chunks = []
+for chunk in tts.stream(
+    "Hello! This is a streaming Sopro TTS example.",
+    ref=ref,
 ):
     chunks.append(chunk.cpu())
 

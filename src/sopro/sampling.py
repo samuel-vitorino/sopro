@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Tuple
 
 import torch
 
@@ -97,5 +97,5 @@ def rf_ar(ar_kernel: int, dilations: Tuple[int, ...]) -> int:
     return 1 + (ar_kernel - 1) * int(sum(dilations))
 
 
-def rf_nar(n_layers_nar: int, kernel_size: int = 7, dilation: int = 1) -> int:
-    return 1 + (kernel_size - 1) * int(n_layers_nar) * int(dilation)
+def rf_nar(kernel_size: int, dilations: Tuple[int, ...]) -> int:
+    return 1 + (kernel_size - 1) * int(sum(dilations))
