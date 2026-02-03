@@ -22,7 +22,7 @@ Some of the main features are:
 
 ## Instructions
 
-I only pinned the minimum dependency versions so you can install the package without having to create a separate env. However, some versions of Torch work best. For example, on my M3 CPU, `torch==2.6.0` (without `torchvision`) achieves ~3× more performance.
+I only pinned the minimum dependency versions so you can install the package without having to create a separate env. However, some versions of Torch work best. For example, on my M3 CPU, `torch==2.10.0` (without `torchvision`) achieves ~600 it/s on the AR generation.
 
 (Optional)
 
