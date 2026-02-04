@@ -6,13 +6,13 @@ https://github.com/user-attachments/assets/40254391-248f-45ff-b9a4-107d64fbb95f
 
 ### 📰 News
 
-**2026.02.04 - SoproTTS v1.5 is out: more stable, faster, and smaller. Trained for just $100, it reaches 250 ms TTFA streaming and 0.05 RTF (~20× realtime) on CPU.**
+**2026.02.04 - SoproTTS v1.5 is out: more stable, faster, and smaller (135M parameters). Trained for just $100, it reaches 250 ms TTFA streaming and 0.05 RTF (~20× realtime) on CPU.**
 
 Sopro (from the Portuguese word for “breath/blow”) is a lightweight English text-to-speech model I trained as a side project. Sopro is composed of dilated convs (à la WaveNet) and lightweight cross-attention layers, instead of the common Transformer architecture. Even though Sopro is not SOTA across most voices and situations, I still think it’s a cool project made with a very low budget (trained on a single L40S GPU), and it can be improved with better data.
 
 Some of the main features are:
 
-- **147M parameters**
+- **135M parameters**
 - **Streaming**
 - **Zero-shot voice cloning**
 - **0.05 RTF on CPU** (measured on an M3 base model), meaning it generates 32 seconds of audio in 1.77 seconds
