@@ -53,7 +53,7 @@ pip install -e .
 
 ```bash
 soprotts \
-  --text "Sopro is a lightweight 169 million parameter text-to-speech model. Some of the main features are streaming, zero-shot voice cloning, and 0.25 real-time factor on the CPU." \
+  --text "Sopro is a lightweight 135 million parameter text-to-speech model. Some of the main features are streaming, zero-shot voice cloning, and 0.05 real-time factor on the CPU." \
   --ref_audio ref.wav \
   --out out.wav
 ```
