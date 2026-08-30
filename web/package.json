@@ -1,6 +1,6 @@
 {
   "name": "@soprotts/onnx-web",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Local Sopro TTS with desktop WebGPU and mobile WASM/SIMD runtimes.",
   "type": "module",
   "sideEffects": false,
