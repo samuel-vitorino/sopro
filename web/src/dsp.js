@@ -224,10 +224,14 @@ export function speechLevelDb(wav, sampleRate) {
 
 export function normalizeReference(wav, sampleRate) {
   const [levelDb] = speechLevelDb(wav, sampleRate);
-  const gainDb = Math.min(Math.max(PROMPT_LEVEL_DB - levelDb, -REF_GAIN_LIMIT_DB), REF_GAIN_LIMIT_DB), gain = 10 ** (gainDb / 20);
+  let gainDb = Math.min(Math.max(PROMPT_LEVEL_DB - levelDb, 0), REF_GAIN_LIMIT_DB);
+  let peak = 0;
+  for (let i = 0; i < wav.length; i++) { const a = Math.abs(wav[i]); if (a > peak) peak = a; }
+  if (peak > 0) gainDb = Math.min(gainDb, Math.max(0, 20 * Math.log10(0.95 / peak)));
+  const gain = 10 ** (gainDb / 20);
   const out = new Float32Array(wav.length);
   for (let i = 0; i < wav.length; i++) out[i] = wav[i] * gain;
-  return { wav: out, levelDb };
+  return { wav: out, levelDb: levelDb + gainDb };
 }
 
 export function cropAndNormalizeReference(input, sampleRate, seconds = 10) {
@@ -235,7 +239,7 @@ export function cropAndNormalizeReference(input, sampleRate, seconds = 10) {
   return normalizeReference(cropped, sampleRate);
 }
 
-export function outputGain() { return 10 ** ((OUTPUT_LEVEL_DB - PROMPT_LEVEL_DB) / 20); }
+export function outputGain(promptLevelDb = PROMPT_LEVEL_DB) { return 10 ** ((OUTPUT_LEVEL_DB - promptLevelDb) / 20); }
 
 export function matchGain(wav, sampleRate, targetDb = OUTPUT_LEVEL_DB) {
   const [levelDb, seconds] = speechLevelDb(wav, sampleRate);

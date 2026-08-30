@@ -298,7 +298,7 @@ class SoproTTS:
             prompt_state=self._prompt_state(ref, int(steps), chunk_frames),
         )
         emitted = 0
-        gain = audio_ops.output_gain()
+        gain = audio_ops.output_gain(ref.level_db)
         lead = audio_ops.LEAD_IN_SECONDS if first else audio_ops.SEGMENT_LEAD_SECONDS
         skip = 0.0 if first else audio_ops.SEGMENT_SKIP_SECONDS
         pending: Optional[torch.Tensor] = torch.zeros(0, device=self.device)

@@ -143,12 +143,15 @@ def speech_level_db(wav: torch.Tensor, sample_rate: int) -> Tuple[float, float]:
 
 def normalize_reference(wav: torch.Tensor, sample_rate: int) -> Tuple[torch.Tensor, float]:
     level_db, _ = speech_level_db(wav, sample_rate)
-    gain_db = min(max(PROMPT_LEVEL_DB - level_db, -REF_GAIN_LIMIT_DB), REF_GAIN_LIMIT_DB)
-    return wav * (10.0 ** (gain_db / 20.0)), level_db
+    gain_db = min(max(PROMPT_LEVEL_DB - level_db, 0.0), REF_GAIN_LIMIT_DB)
+    peak = float(wav.detach().abs().max())
+    if peak > 0.0:
+        gain_db = min(gain_db, max(0.0, 20.0 * math.log10(0.95 / peak)))
+    return wav * (10.0 ** (gain_db / 20.0)), level_db + gain_db
 
 
-def output_gain() -> float:
-    return 10.0 ** ((OUTPUT_LEVEL_DB - PROMPT_LEVEL_DB) / 20.0)
+def output_gain(prompt_level_db: float = PROMPT_LEVEL_DB) -> float:
+    return 10.0 ** ((OUTPUT_LEVEL_DB - float(prompt_level_db)) / 20.0)
 
 
 def match_gain(wav: torch.Tensor, sample_rate: int, target_db: float = OUTPUT_LEVEL_DB) -> float:

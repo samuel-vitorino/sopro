@@ -776,7 +776,7 @@ export class SoproTTS {
   }
 
   async *_streamSegment(text, reference, parameters, promptState, first, last, promptTokens) {
-    const chunkFrames = this.config.generation.stream_chunk_frames, pMel = reference.melFrames, gain = outputGain();
+    const chunkFrames = this.config.generation.stream_chunk_frames, pMel = reference.melFrames, gain = outputGain(reference.levelDb);
     const noise = Array.from({ length: 100 }, () => []), random = new Random(parameters.seed ^ 0x71d3a4c9);
     const ensureNoise = (length) => { for (const channel of noise) while (channel.length < length) channel.push(random.normal()); };
     const noiseSlice = (start, end) => { ensureNoise(end); const out = new Float32Array(100 * (end - start)); for (let m = 0; m < 100; m++) out.set(noise[m].slice(start, end), m * (end - start)); return out; };
