@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sopro"
-version = "2.1.0"
+version = "2.1.1"
 description = "Fast streaming text-to-speech with zero-shot voice cloning."
 readme = "README.md"
 requires-python = ">=3.10"

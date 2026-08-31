@@ -107,6 +107,7 @@ class VocoderConfig:
     intermediate_dim: int = 1536
     num_layers: int = 14
     max_magnitude: float = 100.0
+    band_limit_hz: float = 10900.0
     causal: bool = False
     lookahead_frames: int = 0
     block_lookaheads: Optional[List[int]] = None

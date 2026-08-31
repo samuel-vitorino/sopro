@@ -1040,7 +1040,7 @@ wheels = [
 
 [[package]]
 name = "sopro"
-version = "2.0.5"
+version = "2.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },

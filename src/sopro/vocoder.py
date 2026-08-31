@@ -199,10 +199,17 @@ class ISTFTHead(nn.Module):
         self.out = nn.Linear(int(cfg.dim), int(cfg.n_fft) + 2)
         self.istft = ISTFT(int(cfg.n_fft), int(cfg.hop_length))
         self.log_max_magnitude = math.log(float(cfg.max_magnitude))
+        limit = float(getattr(cfg, "band_limit_hz", 0.0) or 0.0)
+        bins = int(cfg.n_fft) // 2 + 1
+        cut = int(math.ceil(limit * int(cfg.n_fft) / float(cfg.sample_rate))) if limit > 0.0 else bins
+        self.band_limit_bin = max(0, min(bins, cut))
 
     def spectrogram(self, x: torch.Tensor) -> torch.Tensor:
         mag, p = self.out(x).transpose(1, 2).chunk(2, dim=1)
         mag = torch.exp(torch.clamp(mag, max=self.log_max_magnitude))
+        if self.band_limit_bin < int(mag.shape[1]):
+            mag = mag.clone()
+            mag[:, self.band_limit_bin :, :] = 0.0
         return mag * (torch.cos(p) + 1j * torch.sin(p))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
