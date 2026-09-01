@@ -8,6 +8,8 @@
 [![HuggingFace](https://img.shields.io/badge/HuggingFace-Model-orange?logo=huggingface)](https://huggingface.co/samuel-vitorino/sopro-v2-turbo)
 [![ONNX Demo](https://img.shields.io/badge/Demo-In--browser-005ced?logo=onnx&logoColor=white)](https://samuel-vitorino.github.io/sopro/)
 
+> **Compatibility:** Current model artifacts require `sopro>=2.2.0` or `@soprotts/onnx-web>=0.3.0`; upgrade with `pip install -U sopro` or `npm install @soprotts/onnx-web@latest`.
+
 Sopro (from the Portuguese word for "breath/blow") is a lightweight voice-cloning text-to-speech model family. This repo ships **sopro-v2-turbo**, a 120M-parameter open model that streams, runs comfortably on a laptop CPU or in the browser, and reaches SOTA-level intelligibility against much larger systems. The full story, evaluations, and audio samples are in the [blog post](https://research.haloneuro.ai/posts/sopro-v2).
 
 Main features:
