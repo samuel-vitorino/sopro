@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+import onnx
 import onnxruntime as ort
 
 from export import _export_fp32_graphs
@@ -22,6 +23,22 @@ def _session(path: Path) -> ort.InferenceSession:
 
 def _profile_graph(root: Path, profile_name: str, item: dict) -> Path:
     return (root / profile_name / item.get("url", item["file"])).resolve()
+
+
+def _validate_manifest_dtypes(root: Path, profiles: dict) -> list[str]:
+    failures = []
+    expected_types = {"float16": onnx.TensorProto.FLOAT16, "float32": onnx.TensorProto.FLOAT}
+    for profile_name, profile in profiles.items():
+        for graph_name, item in profile["graphs"].items():
+            expected = expected_types.get(item.get("dtype", profile["dtype"]))
+            if expected is None:
+                continue
+            graph = onnx.load_model(_profile_graph(root, profile_name, item), load_external_data=False).graph
+            actual = {value.type.tensor_type.elem_type for value in graph.input if value.type.tensor_type.elem_type in expected_types.values()}
+            if actual and expected not in actual:
+                names = ", ".join(sorted(onnx.TensorProto.DataType.Name(value) for value in actual))
+                failures.append(f"{profile_name}/{graph_name} manifest dtype {item.get('dtype', profile['dtype'])} does not match {names}")
+    return failures
 
 
 def _rotary(length: int, dim: int, offset: int = 0):
@@ -118,7 +135,7 @@ def _feeds(name: str, cfg, rng: np.random.Generator):
             "past_k": rng.normal(size=(2, int(model.acoustic_dit_depth), 1, int(model.acoustic_dit_heads), past, int(model.acoustic_dit_dim_head))).astype(np.float16),
             "past_v": rng.normal(size=(2, int(model.acoustic_dit_depth), 1, int(model.acoustic_dit_heads), past, int(model.acoustic_dit_dim_head))).astype(np.float16),
         }
-    if name in {"vocoder_offline", "vocoder_stream_start"}:
+    if name == "vocoder_stream_start":
         return {"mel": rng.normal(size=(1, 100, 64)).astype(np.float32)}
     raise KeyError(name)
 
@@ -143,7 +160,7 @@ def main() -> None:
         oracle = Path(directory)
         cfg, _ = _export_fp32_graphs(args.artifacts.resolve(), oracle, [2])
         parity_feeds = {}
-        for name in ("reference", "semantic_prefix", "semantic_core", "acoustic_condition", "acoustic_offline_2", "acoustic_stream_prefill_2", "acoustic_stream_step_2", "vocoder_offline"):
+        for name in ("reference", "semantic_prefix", "semantic_core", "acoustic_condition", "acoustic_offline_2", "acoustic_stream_prefill_2", "acoustic_stream_step_2"):
             feeds = _feeds(name, cfg, rng)
             parity_feeds[name] = feeds
             expected = _session(oracle / f"{name}.onnx").run(None, feeds)
@@ -192,16 +209,16 @@ def main() -> None:
                 report[key][1]["tokenAgreement"] = float(np.mean(expected[1] == actual[1]))
         start_feeds = _feeds("vocoder_stream_start", cfg, rng)
         start = _session(oracle / "vocoder_stream_start.onnx").run(None, start_feeds)
-        unified_session = _session(_profile_graph(args.web, "wasm-uint8", profile["graphs"]["vocoder_stream"]))
+        unified_session = _session(_profile_graph(args.web, "wasm-uint8", profile["graphs"]["vocoder"]))
         actual = unified_session.run(None, {
             "is_start": np.array(True), "is_flush": np.array(False), **start_feeds,
             "embed_state": np.zeros_like(start[1]), "conv_state": np.zeros_like(start[2]),
-            "pending0": np.zeros_like(start[3]), "pending1": np.zeros_like(start[4]),
+            "pending": np.zeros_like(start[3]),
         })
         report["vocoder_stream_start"] = [_metrics(a, b) for a, b in zip(start, actual)]
-        state = {key: value for key, value in zip(("istft_features", "embed_state", "conv_state", "pending0", "pending1"), start)}
+        state = {key: value for key, value in zip(("istft_features", "embed_state", "conv_state", "pending"), start)}
         for name in ("vocoder_stream_step", "vocoder_stream_flush"):
-            feeds = {key: state[key] for key in ("embed_state", "conv_state", "pending0", "pending1")}
+            feeds = {key: state[key] for key in ("embed_state", "conv_state", "pending")}
             if name.endswith("step"): feeds["mel"] = rng.normal(size=(1, 100, 64)).astype(np.float32)
             expected = _session(oracle / f"{name}.onnx").run(None, feeds)
             actual = unified_session.run(None, {
@@ -210,11 +227,11 @@ def main() -> None:
             })
             if name.endswith("flush"): actual = actual[:1]
             report[name] = [_metrics(a, b) for a, b in zip(expected, actual)]
-    failures = []
+    failures = _validate_manifest_dtypes(args.web, manifest["profiles"])
     fp32_graphs = {"reference"}
     fp32_graphs.update(name for name in report if name.startswith("webgpu_fp32_"))
     int8_graphs = {"acoustic_condition", "acoustic_offline_2", "acoustic_stream_prefill_2", "acoustic_stream_step_2", "acoustic_stream_prefill_ode_2", "acoustic_stream_ode_2"}
-    vocoder_int8 = {"vocoder_offline", "vocoder_stream_start", "vocoder_stream_step", "vocoder_stream_flush"}
+    vocoder_int8 = {"vocoder_stream_start", "vocoder_stream_step", "vocoder_stream_flush"}
     for name in fp32_graphs:
         if any(output["max"] > 1.0e-5 for output in report[name]):
             failures.append(f"{name} is not fp32-equivalent")

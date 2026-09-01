@@ -34,7 +34,6 @@ from sopro.hub import (  # noqa: E402
     SPEAKER_ENCODER_FILE,
     TOKENIZER_FILE,
     VOCODER_FILE,
-    VOCODER_STREAMING_FILE,
     load_config,
     load_weights,
 )
@@ -410,30 +409,14 @@ class AcousticStreamOdeGraph(nn.Module):
         return x, mel, context, torch.stack(layer_k), torch.stack(layer_v)
 
 
-class VocoderOfflineGraph(nn.Module):
-    def __init__(self, vocoder: Vocoder) -> None:
-        super().__init__()
-        self.vocoder = vocoder
-
-    def forward(self, mel: torch.Tensor):
-        return self.vocoder.head.out(self.vocoder.backbone(mel.float()))
-
-
 def _flatten_vocoder_state(state: Mapping):
     conv = torch.stack([block["conv"] for block in state["blocks"]])
-    return state["embed"], conv, state["blocks"][0]["pending"], state["blocks"][1]["pending"]
+    pending = torch.stack([block["pending"] for block in state["blocks"]])
+    return state["embed"], conv, pending
 
 
-def _vocoder_state(embed: torch.Tensor, conv: torch.Tensor, pending0: torch.Tensor, pending1: torch.Tensor) -> Dict:
-    blocks = []
-    for index in range(int(conv.shape[0])):
-        if index == 0:
-            pending = pending0
-        elif index == 1:
-            pending = pending1
-        else:
-            pending = conv.new_zeros((1, int(conv.shape[2]), 0))
-        blocks.append({"conv": conv[index], "pending": pending})
+def _vocoder_state(embed: torch.Tensor, conv: torch.Tensor, pending: torch.Tensor) -> Dict:
+    blocks = [{"conv": conv[index], "pending": pending[index]} for index in range(int(conv.shape[0]))]
     return {"embed": embed, "blocks": blocks}
 
 
@@ -490,8 +473,8 @@ class VocoderStreamStepGraph(nn.Module):
         super().__init__()
         self.vocoder = vocoder
 
-    def forward(self, mel: torch.Tensor, embed: torch.Tensor, conv: torch.Tensor, pending0: torch.Tensor, pending1: torch.Tensor):
-        hidden, state = _vocoder_stream_backbone(self.vocoder, mel.float(), _vocoder_state(embed, conv, pending0, pending1), False)
+    def forward(self, mel: torch.Tensor, embed: torch.Tensor, conv: torch.Tensor, pending: torch.Tensor):
+        hidden, state = _vocoder_stream_backbone(self.vocoder, mel.float(), _vocoder_state(embed, conv, pending), False)
         return (self.vocoder.head.out(hidden),) + _flatten_vocoder_state(state)
 
 
@@ -500,9 +483,9 @@ class VocoderStreamFlushGraph(nn.Module):
         super().__init__()
         self.vocoder = vocoder
 
-    def forward(self, embed: torch.Tensor, conv: torch.Tensor, pending0: torch.Tensor, pending1: torch.Tensor):
+    def forward(self, embed: torch.Tensor, conv: torch.Tensor, pending: torch.Tensor):
         mel = embed.new_zeros((1, int(self.vocoder.cfg.n_mels), 0))
-        hidden, _ = _vocoder_stream_backbone(self.vocoder, mel, _vocoder_state(embed, conv, pending0, pending1), True)
+        hidden, _ = _vocoder_stream_backbone(self.vocoder, mel, _vocoder_state(embed, conv, pending), True)
         return self.vocoder.head.out(hidden)
 
 
@@ -534,17 +517,15 @@ def _load_modules(root: Path):
     speaker.load_state_dict(load_weights(root, SPEAKER_ENCODER_FILE, device))
     vocoder = Vocoder(config.vocoder)
     vocoder.load_state_dict(load_weights(root, VOCODER_FILE, device))
-    vocoder_stream = Vocoder(config.vocoder_streaming)
-    vocoder_stream.load_state_dict(load_weights(root, VOCODER_STREAMING_FILE, device))
-    for module in (model, semantic, speaker, vocoder, vocoder_stream):
+    for module in (model, semantic, speaker, vocoder):
         module.eval()
         for parameter in module.parameters():
             parameter.requires_grad_(False)
-    return config, model, semantic, speaker, vocoder, vocoder_stream
+    return config, model, semantic, speaker, vocoder
 
 
 def _export_fp32_graphs(root: Path, out: Path, steps: Sequence[int]) -> Tuple[SoproConfig, Dict[str, str]]:
-    config, model, semantic, speaker, vocoder, vocoder_stream = _load_modules(root)
+    config, model, semantic, speaker, vocoder = _load_modules(root)
     cfg = config.model
     graphs: Dict[str, str] = {}
 
@@ -625,17 +606,15 @@ def _export_fp32_graphs(root: Path, out: Path, steps: Sequence[int]) -> Tuple[So
                  ("x", "x_init", "mu_window", "cond_vec", "cond_mel_window", "cond_mask_window", "cos", "sin", "x_context", "past_k", "past_v"), ("x_out", "mel", "x_context_out", "present_k", "present_v"),
                  {"x": {2: "new_frames"}, "x_init": {2: "new_frames"}, "mu_window": {2: "window_frames"}, "cond_mel_window": {2: "window_frames"}, "cond_mask_window": {2: "window_frames"}, "cos": {0: "new_frames"}, "sin": {0: "new_frames"}, "past_k": {3: "past_frames"}, "past_v": {3: "past_frames"}, "x_out": {2: "new_frames"}, "mel": {2: "new_frames"}, "present_k": {3: "present_frames"}, "present_v": {3: "present_frames"}})
 
-    mel = torch.randn(1, int(config.vocoder.n_mels), 64)
-    emit("vocoder_offline", VocoderOfflineGraph(vocoder), (mel,), ("mel",), ("istft_features",), {"mel": {2: "mel_frames"}, "istft_features": {1: "mel_frames"}})
-    stream_mel = torch.randn(1, int(config.vocoder_streaming.n_mels), 64)
-    stream_outputs = ("istft_features", "embed_state_out", "conv_state_out", "pending0_out", "pending1_out")
+    stream_mel = torch.randn(1, int(config.vocoder.n_mels), 64)
+    stream_outputs = ("istft_features", "embed_state_out", "conv_state_out", "pending_out")
     stream_axes = {"mel": {2: "mel_frames"}, "istft_features": {1: "output_frames"}}
-    emit("vocoder_stream_start", VocoderStreamStartGraph(vocoder_stream), (stream_mel,), ("mel",), stream_outputs, stream_axes)
+    emit("vocoder_stream_start", VocoderStreamStartGraph(vocoder), (stream_mel,), ("mel",), stream_outputs, stream_axes)
     with torch.inference_mode():
-        _, state = vocoder_stream.backbone.forward_stream(stream_mel, None, False)
-        embed, conv, pending0, pending1 = _flatten_vocoder_state(state)
-    emit("vocoder_stream_step", VocoderStreamStepGraph(vocoder_stream), (stream_mel, embed, conv, pending0, pending1), ("mel", "embed_state", "conv_state", "pending0", "pending1"), stream_outputs, stream_axes)
-    emit("vocoder_stream_flush", VocoderStreamFlushGraph(vocoder_stream), (embed, conv, pending0, pending1), ("embed_state", "conv_state", "pending0", "pending1"), ("istft_features",), {})
+        _, state = vocoder.backbone.forward_stream(stream_mel, None, False)
+        embed, conv, pending = _flatten_vocoder_state(state)
+    emit("vocoder_stream_step", VocoderStreamStepGraph(vocoder), (stream_mel, embed, conv, pending), ("mel", "embed_state", "conv_state", "pending"), stream_outputs, stream_axes)
+    emit("vocoder_stream_flush", VocoderStreamFlushGraph(vocoder), (embed, conv, pending), ("embed_state", "conv_state", "pending"), ("istft_features",), {})
     return config, graphs
 
 
@@ -677,9 +656,7 @@ def _group_for_graph(name: str) -> str:
         return "condition"
     if name.startswith("acoustic_"):
         return "acoustic"
-    if name == "vocoder_offline":
-        return "vocoder-offline"
-    return "vocoder-stream"
+    return "vocoder"
 
 
 def _merge_vocoder_stream_graphs(profile_dir: Path, graphs: Dict[str, str]) -> None:
@@ -734,10 +711,10 @@ def _merge_vocoder_stream_graphs(profile_dir: Path, graphs: Dict[str, str]) -> N
     flush_branch = branch("vocoder_stream_flush")
 
     # If requires both branches to expose the same contract. Flush does not
-    # mutate state, so pass its input state through for the four outputs the JS
+    # mutate state, so pass its input state through for the three outputs the JS
     # caller intentionally does not request.
     step_inputs = {value.name: value for value in step.graph.input}
-    for input_name, output_name in zip(("embed_state", "conv_state", "pending0", "pending1"), output_names[1:]):
+    for input_name, output_name in zip(("embed_state", "conv_state", "pending"), output_names[1:]):
         flush_branch.node.append(helper.make_node("Identity", [input_name], [output_name], name=f"flush_{output_name}"))
         value = copy.deepcopy(step_inputs[input_name])
         value.name = output_name
@@ -765,13 +742,13 @@ def _merge_vocoder_stream_graphs(profile_dir: Path, graphs: Dict[str, str]) -> N
     )
     merged = helper.make_model(graph, producer_name="sopro-web-export", opset_imports=copy.deepcopy(step.opset_import))
     merged.ir_version = step.ir_version
-    merged_path = profile_dir / "vocoder_stream.onnx"
+    merged_path = profile_dir / "vocoder.onnx"
     onnx.checker.check_model(merged)
     onnx.save_model(merged, str(merged_path))
 
     for name in source_names:
         (profile_dir / graphs.pop(name)).unlink()
-    graphs["vocoder_stream"] = merged_path.name
+    graphs["vocoder"] = merged_path.name
 
 
 def _pack_external(profile_dir: Path, graphs: Mapping[str, str]):
@@ -958,7 +935,7 @@ def _make_profile(source: Path, output: Path, profile: str, graphs: Mapping[str,
     for name, item in graph_meta.items():
         if profile in ("webgpu-fp16", "webgpu-fp32") and (name == "reference" or name.startswith("semantic_")):
             item.update(dtype="float32", provider="wasm")
-        elif profile == "webgpu-fp16" and name.startswith("vocoder_"):
+        elif profile == "webgpu-fp16" and name == "vocoder":
             item.update(dtype="float32", provider="webgpu")
         else:
             item.update(dtype=dtype, provider=provider)

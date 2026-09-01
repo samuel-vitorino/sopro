@@ -12,7 +12,7 @@ from sopro import audio as audio_ops
 from sopro.config import GenerationConfig, SoproConfig
 from sopro.encoders.semantic import SemanticEncoder
 from sopro.encoders.speaker import SpeakerEncoder
-from sopro.hub import MODEL_FILE, SEMANTIC_ENCODER_FILE, SPEAKER_ENCODER_FILE, TOKENIZER_FILE, VOCODER_FILE, VOCODER_STREAMING_FILE, load_config, load_weights, resolve_artifacts
+from sopro.hub import MODEL_FILE, SEMANTIC_ENCODER_FILE, SPEAKER_ENCODER_FILE, TOKENIZER_FILE, VOCODER_FILE, load_config, load_weights, resolve_artifacts
 from sopro.nn.model import SoproModel
 from sopro.nn.quant import quantize_ar_int8
 from sopro.streaming import PromptState, StreamSession, build_prompt_state
@@ -46,7 +46,6 @@ class SoproTTS:
         semantic_encoder: SemanticEncoder,
         speaker_encoder: SpeakerEncoder,
         vocoder: Vocoder,
-        vocoder_streaming: Vocoder,
         tokenizer: TextTokenizer,
         device: torch.device,
     ) -> None:
@@ -55,7 +54,6 @@ class SoproTTS:
         self.semantic_encoder = semantic_encoder
         self.speaker_encoder = speaker_encoder
         self.vocoder = vocoder
-        self.vocoder_streaming = vocoder_streaming
         self.tokenizer = tokenizer
         self.device = device
         self.sample_rate = int(config.sample_rate)
@@ -92,16 +90,14 @@ class SoproTTS:
         speaker_encoder.load_state_dict(load_weights(root, SPEAKER_ENCODER_FILE, torch.device("cpu")))
         vocoder = Vocoder(config.vocoder)
         vocoder.load_state_dict(load_weights(root, VOCODER_FILE, torch.device("cpu")))
-        vocoder_streaming = Vocoder(config.vocoder_streaming)
-        vocoder_streaming.load_state_dict(load_weights(root, VOCODER_STREAMING_FILE, torch.device("cpu")))
-        for module in (semantic_encoder, speaker_encoder, vocoder, vocoder_streaming):
+        for module in (semantic_encoder, speaker_encoder, vocoder):
             module.to(device).eval()
             for p in module.parameters():
                 p.requires_grad_(False)
         for p in model.parameters():
             p.requires_grad_(False)
         tokenizer = TextTokenizer(str(root / TOKENIZER_FILE))
-        return cls(config, model, semantic_encoder, speaker_encoder, vocoder, vocoder_streaming, tokenizer, device)
+        return cls(config, model, semantic_encoder, speaker_encoder, vocoder, tokenizer, device)
 
     @property
     def generation(self) -> GenerationConfig:
@@ -209,7 +205,7 @@ class SoproTTS:
         parts = [p for p in parts if int(p.shape[-1]) > 0]
         if not parts:
             return torch.zeros(int(self.semantic_encoder.token_samples), device=self.device)
-        gain = audio_ops.match_gain(torch.cat(parts, dim=-1), self.sample_rate)
+        gain = audio_ops.output_gain(ref.level_db)
         n = len(parts)
         trimmed = []
         for i, p in enumerate(parts):
@@ -272,6 +268,8 @@ class SoproTTS:
         max_seconds = gen.max_seconds if max_seconds is None else max_seconds
         min_seconds = gen.min_seconds if min_seconds is None else min_seconds
         chunk_frames = int(gen.stream_chunk_frames if chunk_frames is None else chunk_frames)
+        if chunk_frames < 64:
+            raise ValueError("chunk_frames must be at least 64")
         if chunk_frames % self.hop_ratio != 0:
             raise ValueError(f"chunk_frames must be a multiple of {self.hop_ratio}")
         segments = split_text(text, int(gen.max_segment_chars))
@@ -284,7 +282,7 @@ class SoproTTS:
     def _stream_segment(self, text: str, ref: Reference, lang: Optional[str], temperature: float, top_p: float, top_k: int, steps: int, max_seconds: float, min_seconds: float, chunk_frames: int, first: bool = True, last: bool = True, prompt_tokens: Optional[torch.Tensor] = None) -> Iterator[torch.Tensor]:
         session = StreamSession(
             self.model,
-            self.vocoder_streaming,
+            self.vocoder,
             ref.semantic_tokens,
             ref.mel,
             ref.cond_vec,

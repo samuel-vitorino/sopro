@@ -1,5 +1,5 @@
 import { AssetCache, getCachedReference, putCachedReference } from './cache.js';
-import { FINAL_FADE_SECONDS, GATE_HOLD_SECONDS, JOIN_FADE_SECONDS, LEAD_IN_SECONDS, SEGMENT_LEAD_SECONDS, SEGMENT_SKIP_SECONDS, StreamingISTFT, cropAndNormalizeReference, energyFraction, energyOnset, fadeEdges, istft, joinSegments, matchGain, outputGain, referenceFeatures, resample, softLimit, speechOnset, trimLead, trimTrail } from './dsp.js';
+import { FINAL_FADE_SECONDS, GATE_HOLD_SECONDS, JOIN_FADE_SECONDS, LEAD_IN_SECONDS, SEGMENT_LEAD_SECONDS, SEGMENT_SKIP_SECONDS, StreamingISTFT, cropAndNormalizeReference, energyFraction, energyOnset, fadeEdges, istft, joinSegments, outputGain, referenceFeatures, resample, softLimit, speechOnset, trimLead, trimTrail } from './dsp.js';
 import { SentencePieceTokenizer, splitText } from './tokenizer.js';
 
 function joinUrl(base, path) { return `${String(base).replace(/\/$/, '')}/${path}`; }
@@ -88,7 +88,7 @@ function disposeAcousticState(state) {
 }
 function disposeVocoderPromptState(prompt) {
   if (!prompt?.state) return;
-  for (const name of ['embed', 'conv', 'pending0', 'pending1']) dispose(prompt.state[name]);
+  for (const name of ['embed', 'conv', 'pending']) dispose(prompt.state[name]);
 }
 
 class Random {
@@ -258,7 +258,7 @@ class ModelStore {
       if (['semantic_prefill', 'semantic_step', 'semantic_stream', 'semantic_core'].includes(name)) Object.assign(gpuOutputs, { present_k: 'gpu-buffer', present_v: 'gpu-buffer' });
       if (name.startsWith('acoustic_stream_prefill_')) Object.assign(gpuOutputs, { x_context: 'gpu-buffer', present_k: 'gpu-buffer', present_v: 'gpu-buffer' });
       if (name.startsWith('acoustic_stream_step_')) Object.assign(gpuOutputs, { x_context_out: 'gpu-buffer', present_k: 'gpu-buffer', present_v: 'gpu-buffer' });
-      if (name === 'vocoder_stream') Object.assign(gpuOutputs, { embed_state_out: 'gpu-buffer', conv_state_out: 'gpu-buffer', pending0_out: 'gpu-buffer', pending1_out: 'gpu-buffer' });
+      if (name === 'vocoder') Object.assign(gpuOutputs, { embed_state_out: 'gpu-buffer', conv_state_out: 'gpu-buffer', pending_out: 'gpu-buffer' });
     }
     try {
       const session = await this.ort.InferenceSession.create(graphBytes, {
@@ -331,7 +331,6 @@ export class SoproTTS {
       };
     } else if (wasmPaths) ort.env.wasm.wasmPaths = wasmPaths;
     const tokenizer = new SentencePieceTokenizer(await assets.json(versionUrl(joinUrl(base, manifest.tokenizer), manifest.revision)));
-    const unifiedVocoder = Boolean(manifest.profiles[profile]?.graphs?.vocoder_stream);
     const runtimeVariant = mobileUnsharedWasm
       ? 'wasm-mobile'
       : mobileThreadedWasm ? `wasm-mobile-${requestedThreads}t` : null;
@@ -528,6 +527,50 @@ export class SoproTTS {
     return { data, upTo: frames };
   }
 
+  _emptyVocoderState(name) {
+    const config = this.config.vocoder, lookaheads = config.block_lookaheads ?? [];
+    const lookahead = Number(lookaheads[0] ?? 0);
+    if (lookaheads.length !== config.num_layers || lookaheads.some((value) => Number(value) !== lookahead)) throw new Error('The shared vocoder requires uniform block lookahead.');
+    return {
+      embed: this.store.graphFloatTensor(name, new Float32Array(config.n_mels * 6), [1, config.n_mels, 6]),
+      conv: this.store.graphFloatTensor(name, new Float32Array(config.num_layers * config.dim * 6), [config.num_layers, 1, config.dim, 6]),
+      pending: this.store.graphFloatTensor(name, new Float32Array(config.num_layers * config.dim * lookahead), [config.num_layers, 1, config.dim, lookahead]),
+    };
+  }
+
+  async _decodeVocoder(mel, frames) {
+    const name = 'vocoder', session = await this.store.session(name);
+    const controls = { start: this.store.boolTensor(true), continue: this.store.boolTensor(false), flush: this.store.boolTensor(true) };
+    const initial = this._emptyVocoderState(name);
+    let started = null;
+    try {
+      started = await session.run({
+        mel: this.store.graphFloatTensor(name, mel, [1, this.config.vocoder.n_mels, frames]),
+        is_start: controls.start, is_flush: controls.continue,
+        embed_state: initial.embed, conv_state: initial.conv, pending: initial.pending,
+      });
+      const firstFrames = started.istft_features.dims[1];
+      let first;
+      try { first = Float32Array.from(await tensorData(started.istft_features)); } finally { dispose(started.istft_features); }
+      const tail = await session.run({
+        mel: this.store.graphFloatTensor(name, new Float32Array(0), [1, this.config.vocoder.n_mels, 0]),
+        is_start: controls.continue, is_flush: controls.flush,
+        embed_state: started.embed_state_out, conv_state: started.conv_state_out, pending: started.pending_out,
+      }, ['istft_features']);
+      const tailFrames = tail.istft_features.dims[1];
+      let rest;
+      try { rest = Float32Array.from(await tensorData(tail.istft_features)); } finally { dispose(tail.istft_features); }
+      const features = new Float32Array(first.length + rest.length);
+      features.set(first); features.set(rest, first.length);
+      return istft(features, firstFrames + tailFrames);
+    } finally {
+      if (started) for (const name of ['embed_state_out', 'conv_state_out', 'pending_out']) dispose(started[name]);
+      Object.values(initial).forEach(dispose);
+      Object.values(controls).forEach(dispose);
+      if (this.store.lowMemory) await this.store.releaseTransient(name);
+    }
+  }
+
   async synthesize(text, reference, options = {}) {
     const parameters = this._parameters(options), generation = this.config.generation;
     const parts = [];
@@ -538,9 +581,7 @@ export class SoproTTS {
       if (wav.length) parts.push(wav);
     }
     if (!parts.length) return new Float32Array(this.tokenSamples);
-    const concat = new Float32Array(parts.reduce((sum, part) => sum + part.length, 0));
-    let offset = 0; for (const part of parts) { concat.set(part, offset); offset += part.length; }
-    const gain = matchGain(concat, this.sampleRate);
+    const gain = outputGain(reference.levelDb);
     const trimmed = parts.map((part, index) => {
       const scaled = new Float32Array(part.length);
       for (let i = 0; i < part.length; i++) scaled[i] = part[i] * gain;
@@ -568,11 +609,7 @@ export class SoproTTS {
     if (this.store.lowMemory) await this.store.releaseTransient(`acoustic_offline_${parameters.steps}`);
     const mel = channelSlice(normalized, 100, frames, reference.melFrames - context, frames), mean = this.config.model.acoustic_mel_mean, std = this.config.model.acoustic_mel_std;
     for (let m = 0; m < 100; m++) for (let t = 0; t < decodeFrames; t++) mel[m * decodeFrames + t] = mel[m * decodeFrames + t] * std[m] + mean[m];
-    const vocoder = await this.store.session('vocoder_offline'), decoded = await vocoder.run({ mel: this.store.graphFloatTensor('vocoder_offline', mel, [1, 100, decodeFrames]) });
-    const featureFrames = decoded.istft_features.dims[1], features = Float32Array.from(await tensorData(decoded.istft_features));
-    dispose(decoded.istft_features);
-    if (this.store.lowMemory) await this.store.releaseTransient('vocoder_offline');
-    const waveform = istft(features, featureFrames);
+    const waveform = await this._decodeVocoder(mel, decodeFrames);
     const start = context * this.config.vocoder.hop_length, target = generated.length * this.tokenSamples;
     return { wav: waveform.slice(start, Math.min(waveform.length, start + target)), tokens };
   }
@@ -633,7 +670,7 @@ export class SoproTTS {
   }
 
   async _vocoderPromptState(reference) {
-    const name = 'vocoder_stream';
+    const name = 'vocoder';
     const warmFrames = Math.min(32, reference.melFrames), key = `${reference.key}:${this.backend}:${warmFrames}`;
     if (this.vocoderPromptStates.has(key)) return this.vocoderPromptStates.get(key);
     const promise = (async () => {
@@ -642,10 +679,7 @@ export class SoproTTS {
       for (let m = 0; m < 100; m++) for (let t = 0; t < warmFrames; t++) warm[m * warmFrames + t] = warm[m * warmFrames + t] * std[m] + mean[m];
       const controls = {
         start: this.store.boolTensor(true), flush: this.store.boolTensor(false),
-        embed: this.store.graphFloatTensor(name, new Float32Array(this.config.vocoder_streaming.n_mels * 6), [1, this.config.vocoder_streaming.n_mels, 6]),
-        conv: this.store.graphFloatTensor(name, new Float32Array(this.config.vocoder_streaming.num_layers * this.config.vocoder_streaming.dim * 6), [this.config.vocoder_streaming.num_layers, 1, this.config.vocoder_streaming.dim, 6]),
-        pending0: this.store.graphFloatTensor(name, new Float32Array(this.config.vocoder_streaming.dim * (this.config.vocoder_streaming.block_lookaheads?.[0] ?? 0)), [1, this.config.vocoder_streaming.dim, this.config.vocoder_streaming.block_lookaheads?.[0] ?? 0]),
-        pending1: this.store.graphFloatTensor(name, new Float32Array(this.config.vocoder_streaming.dim * (this.config.vocoder_streaming.block_lookaheads?.[1] ?? 0)), [1, this.config.vocoder_streaming.dim, this.config.vocoder_streaming.block_lookaheads?.[1] ?? 0]),
+        ...this._emptyVocoderState(name),
       };
       let output;
       try {
@@ -653,13 +687,13 @@ export class SoproTTS {
           mel: this.store.graphFloatTensor(name, warm, [1, 100, warmFrames]),
           is_start: controls.start, is_flush: controls.flush,
           embed_state: controls.embed, conv_state: controls.conv,
-          pending0: controls.pending0, pending1: controls.pending1,
+          pending: controls.pending,
         });
         const featureFrames = output.istft_features.dims[1], features = Float32Array.from(await tensorData(output.istft_features));
         dispose(output.istft_features);
         return {
           warmFrames, featureFrames, features,
-          state: { embed: output.embed_state_out, conv: output.conv_state_out, pending0: output.pending0_out, pending1: output.pending1_out, shared: true },
+          state: { embed: output.embed_state_out, conv: output.conv_state_out, pending: output.pending_out, shared: true },
         };
       } catch (error) {
         if (output) for (const tensor of Object.values(output)) dispose(tensor);
@@ -699,7 +733,7 @@ export class SoproTTS {
     await cooperate(parameters);
     await this._vocoderPromptState(reference);
     await cooperate(parameters);
-    await this.store.session('vocoder_stream');
+    await this.store.session('vocoder');
     this.store.releaseStagedWeights();
     if (this.backend.startsWith('wasm')) {
       await this._warmup(parameters, acousticSteps, semanticGraphs);
@@ -785,10 +819,10 @@ export class SoproTTS {
     const muCache = this._muCache(promptState);
     const vocoderPrompt = await this._vocoderPromptState(reference), streamIstft = new StreamingISTFT(), warmFrames = vocoderPrompt.warmFrames, mean = this.config.model.acoustic_mel_mean, std = this.config.model.acoustic_mel_std;
     const warmAudio = streamIstft.push(vocoderPrompt.features, vocoderPrompt.featureFrames, false);
-    const vocoderName = 'vocoder_stream', vocoderControls = {
+    const vocoderName = 'vocoder', vocoderControls = {
       continue: this.store.boolTensor(false), flush: this.store.boolTensor(true),
     };
-    let vocoderState = { ...vocoderPrompt.state, shared: true }, skipSamples = Math.max(0, warmFrames * this.config.vocoder_streaming.hop_length - warmAudio.length), emitted = 0;
+    let vocoderState = { ...vocoderPrompt.state, shared: true }, skipSamples = Math.max(0, warmFrames * this.config.vocoder.hop_length - warmAudio.length), emitted = 0;
     const lead = first ? LEAD_IN_SECONDS : SEGMENT_LEAD_SECONDS, skip = first ? 0 : SEGMENT_SKIP_SECONDS;
     let pending = new Float32Array(0), pendingOffset = 0;
     const gate = (audio) => {
@@ -822,10 +856,10 @@ export class SoproTTS {
         mel: this.store.graphFloatTensor(vocoderName, mel, [1, 100, frames]),
         is_start: vocoderControls.continue, is_flush: vocoderControls.continue,
         embed_state: vocoderState.embed, conv_state: vocoderState.conv,
-        pending0: vocoderState.pending0, pending1: vocoderState.pending1,
+        pending: vocoderState.pending,
       };
-      const old = vocoderState, out = await session.run(feeds); vocoderState = { embed: out.embed_state_out, conv: out.conv_state_out, pending0: out.pending0_out, pending1: out.pending1_out };
-      if (old && !old.shared) for (const name of ['embed', 'conv', 'pending0', 'pending1']) dispose(old[name]);
+      const old = vocoderState, out = await session.run(feeds); vocoderState = { embed: out.embed_state_out, conv: out.conv_state_out, pending: out.pending_out };
+      if (old && !old.shared) for (const name of ['embed', 'conv', 'pending']) dispose(old[name]);
       const featureFrames = out.istft_features.dims[1], features = Float32Array.from(await tensorData(out.istft_features));
       dispose(out.istft_features);
       let audio = streamIstft.push(features, featureFrames, false);
@@ -841,7 +875,8 @@ export class SoproTTS {
     const stepSessions = await Promise.all(stepNames.map((name) => this.store.session(name)));
     const advance = async (final) => {
       const chunks = [], allTokens = Uint32Array.from([...reference.semanticTokens, ...generated]), total = pMel + generated.length * this.hopRatio;
-      let target = final ? total : Math.floor(Math.max(0, total - (this.config.model.acoustic_pos_kernel_size - 1 + this.hopRatio)) / chunkFrames) * chunkFrames;
+      const finalityMargin = this.config.model.acoustic_pre_lookahead_frames * this.hopRatio;
+      let target = final ? total : Math.floor(Math.max(0, total - finalityMargin) / chunkFrames) * chunkFrames;
       while (acousticState.cached < target) {
         const start = acousticState.cached, count = Math.min(chunkFrames, target - start), end = start + count;
         const windowStart = start - this.manifest.positionContext, muWindow = await this._condition(allTokens, total, windowStart, end, false, muCache);
@@ -920,7 +955,7 @@ export class SoproTTS {
         is_start: vocoderControls.continue, is_flush: vocoderControls.flush,
         mel: this.store.graphFloatTensor(vocoderName, new Float32Array(0), [1, 100, 0]),
         embed_state: vocoderState.embed, conv_state: vocoderState.conv,
-        pending0: vocoderState.pending0, pending1: vocoderState.pending1,
+        pending: vocoderState.pending,
       }, ['istft_features']);
       const featureFrames = tailOut.istft_features.dims[1], features = Float32Array.from(await tensorData(tailOut.istft_features));
       dispose(tailOut.istft_features);
@@ -942,7 +977,7 @@ export class SoproTTS {
     }
     return Uint32Array.from(generated);
     } finally {
-      if (vocoderState && !vocoderState.shared) for (const name of ['embed', 'conv', 'pending0', 'pending1']) dispose(vocoderState[name]);
+      if (vocoderState && !vocoderState.shared) for (const name of ['embed', 'conv', 'pending']) dispose(vocoderState[name]);
       Object.values(vocoderControls).forEach(dispose);
       if (!acousticState.shared) disposeAcousticState(acousticState);
     }

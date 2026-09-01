@@ -74,7 +74,7 @@ class StreamSession:
         else:
             self.state = model.acoustic_head.new_chunked_state(self.steps, int(max_frames))
             self.x0 = cond_vec.new_zeros((1, self.n_mels, 0))
-        self.conv_margin = int(model.acoustic_head.conv_right_margin) + self.hop_ratio
+        self.finality_margin = int(model.acoustic_head.semantic_prelook.lookahead) * self.hop_ratio
         self.tokens = ref_semantic_tokens.new_zeros((1, 0))
         self.kept = 0
         self.vocoder_state: Optional[Dict[str, Any]] = None
@@ -114,7 +114,7 @@ class StreamSession:
     def push(self, sem_chunk: torch.Tensor) -> Optional[torch.Tensor]:
         self.tokens = torch.cat([self.tokens, sem_chunk], dim=1)
         covered = int(self.tokens.shape[-1]) * self.hop_ratio
-        keep_end = ((self.p_mel + covered - self.conv_margin) // self.chunk_frames) * self.chunk_frames - self.p_mel
+        keep_end = ((self.p_mel + covered - self.finality_margin) // self.chunk_frames) * self.chunk_frames - self.p_mel
         if keep_end <= self.kept:
             return None
         return self._feed(self._render(keep_end), flush=False)

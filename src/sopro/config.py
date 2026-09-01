@@ -105,12 +105,11 @@ class VocoderConfig:
     n_mels: int = 100
     dim: int = 512
     intermediate_dim: int = 1536
-    num_layers: int = 14
+    num_layers: int = 8
     max_magnitude: float = 100.0
-    band_limit_hz: float = 10900.0
-    causal: bool = False
-    lookahead_frames: int = 0
-    block_lookaheads: Optional[List[int]] = None
+    causal: bool = True
+    lookahead_frames: int = 3
+    block_lookaheads: Optional[List[int]] = field(default_factory=lambda: [3] * 8)
 
 
 @dataclass
@@ -135,7 +134,6 @@ class SoproConfig:
     semantic_encoder: SemanticEncoderConfig = field(default_factory=SemanticEncoderConfig)
     speaker_encoder: SpeakerEncoderConfig = field(default_factory=SpeakerEncoderConfig)
     vocoder: VocoderConfig = field(default_factory=VocoderConfig)
-    vocoder_streaming: VocoderConfig = field(default_factory=lambda: VocoderConfig(causal=True))
     generation: GenerationConfig = field(default_factory=GenerationConfig)
 
     @classmethod
@@ -146,7 +144,6 @@ class SoproConfig:
             semantic_encoder=_from_dict(SemanticEncoderConfig, data.get("semantic_encoder")),
             speaker_encoder=_from_dict(SpeakerEncoderConfig, data.get("speaker_encoder")),
             vocoder=_from_dict(VocoderConfig, data.get("vocoder")),
-            vocoder_streaming=_from_dict(VocoderConfig, data.get("vocoder_streaming")),
             generation=_from_dict(GenerationConfig, data.get("generation")),
         )
 

@@ -88,10 +88,6 @@ class CausalConvPositionEmbedding(nn.Module):
         self.conv1 = nn.Conv1d(int(dim), int(dim), self.kernel_size, groups=int(groups))
         self.conv2 = nn.Conv1d(int(dim), int(dim), self.kernel_size, groups=int(groups))
 
-    @property
-    def right_margin(self) -> int:
-        return 2 * ((self.kernel_size - 1) // 2)
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = x.transpose(1, 2).contiguous()
         y = F.mish(self.conv1(F.pad(y, (self.kernel_size - 1, 0))))
@@ -200,10 +196,6 @@ class AcousticHead(nn.Module):
         )
         self.out_norm = AdaLayerNormFinal(self.model_dim)
         self.out_proj = nn.Linear(self.model_dim, self.target_dim)
-
-    @property
-    def conv_right_margin(self) -> int:
-        return self.input_embed.pos.right_margin
 
     def semantic_latents(self, semantic_tokens: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
         return self.semantic_token_emb(semantic_tokens.to(dtype=torch.long)).transpose(1, 2).contiguous().to(dtype=dtype)

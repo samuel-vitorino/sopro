@@ -166,7 +166,6 @@ class RoomToneRandom {
 }
 
 const PROMPT_LEVEL_DB = -19.8, OUTPUT_LEVEL_DB = -23.0, REF_GAIN_LIMIT_DB = 30.0, MIN_ACTIVE_SECONDS = 0.4;
-const SAMPLE_RATE = 24000, BAND_LIMIT_HZ = 10900;
 const PAUSE_MIN_SECONDS = 0.10, PAUSE_KEEP_SECONDS = 0.15, CROP_FORWARD_SECONDS = 5.0, CROP_BACKWARD_SECONDS = 5.0, MIN_KEEP_FRACTION = 0.75, ROOM_TONE_SECONDS = 0.25, FADE_SECONDS = 0.02;
 const ONSET_THRESHOLD_DB = -45.0, ONSET_OVER_FLOOR_DB = 15.0, ONSET_WINDOW_FRAMES = 6, ONSET_MIN_FRAMES = 5;
 export const LEAD_IN_SECONDS = 0.08, SEGMENT_LEAD_SECONDS = 0.30, SEGMENT_SKIP_SECONDS = 0.10, TRAIL_SECONDS = 0.30, JOIN_FADE_SECONDS = 0.01, FINAL_FADE_SECONDS = 0.08, GATE_HOLD_SECONDS = 2;
@@ -365,8 +364,7 @@ export function referenceFeatures(wav24) {
 
 function inverseSpectrum(features, offset, nFft = 1024) {
   const bins = nFft / 2 + 1, real = new Float64Array(nFft), imag = new Float64Array(nFft);
-  const limit = Math.min(bins, Math.ceil(BAND_LIMIT_HZ * nFft / SAMPLE_RATE));
-  for (let k = 0; k < limit; k++) {
+  for (let k = 0; k < bins; k++) {
     const mag = Math.exp(Math.min(Math.log(100), features[offset + k]));
     const phase = features[offset + bins + k];
     real[k] = mag * Math.cos(phase); imag[k] = mag * Math.sin(phase);

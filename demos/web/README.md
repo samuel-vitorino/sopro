@@ -10,6 +10,12 @@ Run:
 python serve.py
 ```
 
+Test a local export with the local runtime source:
+
+```bash
+python serve.py --model-dir /path/to/web-model
+```
+
 For testing from another device on your network, serve over HTTPS:
 
 ```bash

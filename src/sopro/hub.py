@@ -14,9 +14,8 @@ MODEL_FILE = "model.safetensors"
 SEMANTIC_ENCODER_FILE = "semantic_encoder.safetensors"
 SPEAKER_ENCODER_FILE = "speaker_encoder.safetensors"
 VOCODER_FILE = "vocoder.safetensors"
-VOCODER_STREAMING_FILE = "vocoder_streaming.safetensors"
 TOKENIZER_FILE = "tokenizer.model"
-ARTIFACT_FILES = (CONFIG_FILE, MODEL_FILE, SEMANTIC_ENCODER_FILE, SPEAKER_ENCODER_FILE, VOCODER_FILE, VOCODER_STREAMING_FILE, TOKENIZER_FILE)
+ARTIFACT_FILES = (CONFIG_FILE, MODEL_FILE, SEMANTIC_ENCODER_FILE, SPEAKER_ENCODER_FILE, VOCODER_FILE, TOKENIZER_FILE)
 
 
 def resolve_artifacts(repo_or_path: Union[str, Path], revision: Optional[str] = None, cache_dir: Optional[str] = None) -> Path:

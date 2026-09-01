@@ -112,6 +112,8 @@ wav = torch.cat(chunks, dim=-1)
 tts.save_wav("out_stream.wav", wav)
 ```
 
+`chunk_frames` defaults to 64 and must be at least 64. Larger values such as 128 or 256 are supported and reduce call frequency at the cost of later audio emission.
+
 You can also precalculate the reference to reduce time-to-first-audio:
 
 ```python
